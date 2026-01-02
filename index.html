@@ -55,7 +55,6 @@ backdrop-filter:blur(6px);border-radius:22px;font-size:18px;font-weight:bold;tex
 .mask-tip{margin-top:6px;font-size:13px;opacity:.9}
 
 #aqiChart{width:100%;height:120px;display:block;margin-top:6px;border-radius:12px;}
-#aqiMap{width:100%;height:200px;border-radius:12px;border:0;margin-top:6px}
 
 @media(prefers-color-scheme:dark){
   body{background:linear-gradient(135deg,#0f2027,#203a43,#2c5364)}
@@ -108,7 +107,6 @@ backdrop-filter:blur(6px);border-radius:22px;font-size:18px;font-weight:bold;tex
   <div id="maskTip" class="mask-tip">--</div>
   <span id="aqiTrend"></span>
   <canvas id="aqiChart"></canvas>
-  <iframe id="aqiMap" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
 </div>
 
 <h3>🏃 Lifestyle Index</h3>
@@ -183,7 +181,6 @@ async function loadWeather(lat,lon,name){
     $("maskTip").textContent=pm<=30?"😌 No mask needed":pm<=60?"😐 Optional for sensitive users":pm<=90?"😷 Mask recommended outdoors":"😷 N95 mask strongly advised";
     const prev=a.hourly.pm2_5[1]; $("aqiTrend").textContent=pm>prev?" ↑ Worsening":pm<prev?" ↓ Improving":" → Stable";
     drawAQIChart(a.hourly.pm2_5.slice(0,24));
-    setTimeout(()=>{$("aqiMap").src=`https://embed.windy.com/embed2.html?lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&zoom=7&level=surface&overlay=pm2p5`;},300);
 
     buildForecast(w);
     localStorage.setItem("rivanoy_cache",JSON.stringify({lat,lon,name,weather:w,air:a}));
