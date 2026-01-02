@@ -8,6 +8,12 @@
 <meta name="theme-color" content="#667eea">
 <link rel="manifest" href="manifest.json">
 
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+
 <style>
 *{box-sizing:border-box;font-family:system-ui,sans-serif}
 body{
@@ -15,7 +21,7 @@ body{
   padding:12px;background:linear-gradient(135deg,#667eea,#764ba2)
 }
 .app{
-  width:100%;max-width:380px;min-height:100vh;padding:16px;
+  width:100%;max-width:390px;min-height:100vh;padding:16px;
   border-radius:22px;background:rgba(255,255,255,.18);
   backdrop-filter:blur(16px);color:#000;position:relative
 }
@@ -24,29 +30,57 @@ input,button{
 }
 button{font-weight:bold;background:rgba(255,255,255,.35)}
 .icon{font-size:48px;text-align:center}
-.details{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.detail-card{
+.big{font-size:26px;font-weight:bold}
+
+.banner{
+  display:none;padding:8px;border-radius:10px;
+  font-size:13px;text-align:center;margin-bottom:10px
+}
+.banner.alert{background:#e53935;color:#fff}
+.banner.info{background:#ff7043;color:#fff}
+
+.details,.lifestyle{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px
+}
+.card{
   background:rgba(255,255,255,.25);
   border-radius:16px;padding:12px;text-align:center
 }
-.big{font-size:26px;font-weight:bold}
-.hourly,.forecast{
-  display:flex;gap:12px;overflow-x:auto;margin-top:10px;padding-bottom:6px
+
+.summary{
+  margin-top:10px;padding:12px;border-radius:16px;
+  background:rgba(255,255,255,.25);font-size:14px
 }
-.hour,.day{display:flex;flex-direction:column;align-items:center}
-.hour-bar,.day-bar-max,.day-bar-min{
-  width:22px;border-radius:6px 6px 0 0
+
+/* Forecast */
+.day-card{
+  background:rgba(255,255,255,.22);
+  border-radius:16px;padding:12px;margin-top:10px;
+  cursor:pointer
 }
-.day-bar-container{
-  display:flex;flex-direction:column-reverse;height:80px
+.day-header{
+  display:flex;justify-content:space-between;font-weight:bold
 }
-.loading-overlay{
+.bars{
+  display:flex;gap:6px;align-items:flex-end;height:80px;margin-top:6px
+}
+.bar{width:14px;border-radius:6px 6px 0 0}
+.expand{
+  max-height:0;overflow:hidden;transition:max-height .35s ease
+}
+.day-card.open .expand{max-height:240px}
+.hour-row{
+  display:flex;justify-content:space-between;font-size:12px;
+  border-bottom:1px solid rgba(255,255,255,.2);padding:4px 0
+}
+
+.loading{
   position:absolute;inset:0;display:none;
   align-items:center;justify-content:center;
-  background:rgba(255,255,255,.35);
-  backdrop-filter:blur(8px);
-  font-size:18px;border-radius:22px;z-index:10
+  background:rgba(255,255,255,.4);
+  backdrop-filter:blur(6px);border-radius:22px
 }
+
 @media(prefers-color-scheme:dark){
   body{background:linear-gradient(135deg,#0f2027,#203a43,#2c5364)}
   .app{background:rgba(0,0,0,.35);color:#fff}
@@ -56,189 +90,144 @@ button{font-weight:bold;background:rgba(255,255,255,.35)}
 
 <body>
 <div class="app">
-  <h1>🌦 Rivanoy</h1>
+<h1>🌦 Rivanoy</h1>
 
-  <input id="cityInput" placeholder="Search city">
-  <button id="searchBtn">Search</button>
-  <button id="locBtn">📍 Use My Location</button>
-  <button id="installBtn" style="display:none">⬇ Install App</button>
+<button id="installBtn" style="display:none">⬇ Install App</button>
+<div class="banner info" id="updateBanner">New update available — Tap to refresh</div>
+<div class="banner info" id="offlineBanner">Offline — showing saved data</div>
+<div class="banner alert" id="alertBanner"></div>
 
-  <div class="loading-overlay" id="loading">Loading…</div>
+<input id="cityInput" placeholder="Search city">
+<button id="searchBtn">Search</button>
+<button id="locBtn">📍 Use My Location</button>
 
-  <h2 id="location">Loading weather…</h2>
-  <div id="icon" class="icon">⛅</div>
+<div class="loading" id="loading">Loading…</div>
 
-  <p id="temp">--°</p>
-  <p id="feels">Feels like --</p>
-  <p id="wind">Wind --</p>
-  <p id="humidity">Humidity --</p>
-  <p id="updated">Updated --</p>
+<h2 id="location">--</h2>
+<div class="icon" id="icon">⛅</div>
 
-  <div class="details">
-    <div class="detail-card">
-      <h4>🧭 Wind Dir</h4>
-      <div id="windDir" class="big">--</div>
-    </div>
-    <div class="detail-card">
-      <h4>🌫 AQI (PM2.5)</h4>
-      <div id="aqiValue" class="big">--</div>
-      <div id="aqiLabel">--</div>
-    </div>
+<p id="temp">--°</p>
+<p id="feels">Feels like --</p>
+<p id="wind">Wind --</p>
+<p id="humidity">Humidity --</p>
+
+<div class="summary" id="summary">Loading summary…</div>
+
+<div class="details">
+  <div class="card">
+    <h4>☀ UV</h4>
+    <div id="uv" class="big">--</div>
   </div>
+  <div class="card">
+    <h4>🌅 Sun</h4>
+    <small id="sun">--</small>
+  </div>
+</div>
 
-  <h3>🕒 Next 24 Hours</h3>
-  <div class="hourly" id="hourly"></div>
+<h3>🏃 Lifestyle Index</h3>
+<div class="lifestyle">
+  <div class="card" id="run">Running --</div>
+  <div class="card" id="cycle">Cycling --</div>
+  <div class="card" id="laundry">Laundry --</div>
+  <div class="card" id="outdoor">Outdoor --</div>
+</div>
 
-  <h3>📅 7-Day Forecast</h3>
-  <div class="forecast" id="forecast"></div>
+<h3>📅 7-Day Forecast</h3>
+<div id="forecast"></div>
 
-  <footer style="margin-top:20px;font-size:11px;text-align:center">
-    © Manik Roy 2025. All Rights Reserved.
-  </footer>
+<footer style="margin-top:20px;font-size:11px;text-align:center">
+© Manik Roy 2025. All Rights Reserved.
+</footer>
 </div>
 
 <script>
 const $=id=>document.getElementById(id);
-const loading=$("loading");
+const icons={0:"☀",1:"🌤",2:"⛅",3:"☁",61:"🌧",71:"❄",95:"⛈"};
 
-const icons={0:"☀",1:"🌤",2:"⛅",3:"☁",45:"🌫",61:"🌧",71:"❄",95:"⛈"};
+function color(t){return t>35?"#e53935":t>25?"#fb8c00":t>15?"#fdd835":"#42a5f5";}
+function score(t,w,uv){return Math.max(0,Math.min(100,100-Math.abs(22-t)*3-w*2-uv*3));}
+function summary(t,uv){return t>32?"Hot day ahead":t<15?"Cool conditions":"Pleasant weather"+(uv>7?", high UV":"");}
 
-function showLoading(v){loading.style.display=v?"flex":"none";}
-function compass(d){return["N","NE","E","SE","S","SW","W","NW"][Math.round(d/45)%8];}
+async function loadWeather(lat,lon,name){
+  $("loading").style.display="flex";
+  const w=await fetch(
+`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,relativehumidity_2m,windspeed_10m,uv_index&daily=temperature_2m_min,temperature_2m_max,weathercode,sunrise,sunset&timezone=auto`
+  ).then(r=>r.json());
 
-/* ---------- PWA INSTALL ---------- */
-let deferredPrompt=null;
+  $("location").textContent=name;
+  $("temp").textContent=w.current_weather.temperature+"°C";
+  $("feels").textContent="Feels like "+w.current_weather.temperature+"°C";
+  $("wind").textContent="Wind "+w.current_weather.windspeed+" km/h";
+  $("humidity").textContent="Humidity "+w.hourly.relativehumidity_2m[0]+"%";
+  $("icon").textContent=icons[w.current_weather.weathercode]||"⛅";
+  $("uv").textContent=w.hourly.uv_index[0];
+  $("sun").textContent=w.daily.sunrise[0].slice(11,16)+" – "+w.daily.sunset[0].slice(11,16);
+  $("summary").textContent=summary(w.current_weather.temperature,w.hourly.uv_index[0]);
+
+  $("run").textContent="Running "+score(w.current_weather.temperature,5,w.hourly.uv_index[0]);
+  $("cycle").textContent="Cycling "+score(w.current_weather.temperature,8,w.hourly.uv_index[0]);
+  $("laundry").textContent="Laundry "+(w.hourly.uv_index[0]>5?90:60);
+  $("outdoor").textContent="Outdoor "+score(w.current_weather.temperature,3,w.hourly.uv_index[0]);
+
+  buildForecast(w);
+  localStorage.setItem("rivanoy_cache",JSON.stringify({lat,lon,name,w}));
+  $("loading").style.display="none";
+}
+
+function buildForecast(w){
+  const f=$("forecast");f.innerHTML="";
+  const min=Math.min(...w.daily.temperature_2m_min);
+  const max=Math.max(...w.daily.temperature_2m_max);
+  const range=max-min||1;
+
+  w.daily.time.forEach((d,i)=>{
+    const card=document.createElement("div");
+    card.className="day-card";
+    card.innerHTML=`
+      <div class="day-header">
+        <span>${d.slice(5)}</span>
+        <span>${w.daily.temperature_2m_max[i]}° / ${w.daily.temperature_2m_min[i]}°</span>
+      </div>
+      <div class="bars">
+        <div class="bar" style="height:${((w.daily.temperature_2m_max[i]-min)/range)*80+10}px;background:${color(w.daily.temperature_2m_max[i])}"></div>
+        <div class="bar" style="height:${((w.daily.temperature_2m_min[i]-min)/range)*80+10}px;background:${color(w.daily.temperature_2m_min[i])}"></div>
+      </div>
+      <div class="expand"></div>`;
+    card.onclick=()=>{
+      card.classList.toggle("open");
+      const ex=card.querySelector(".expand");
+      if(ex.innerHTML)return;
+      for(let h=0;h<24;h++){
+        ex.innerHTML+=`
+          <div class="hour-row">
+            <span>${h}:00</span>
+            <span>${w.hourly.temperature_2m[i*24+h]}°</span>
+            <span>${w.hourly.relativehumidity_2m[i*24+h]}%</span>
+            <span>${w.hourly.windspeed_10m[i*24+h]} km/h</span>
+          </div>`;
+      }
+    };
+    f.appendChild(card);
+  });
+}
+
+/* INSTALL */
+let deferredPrompt;
 window.addEventListener("beforeinstallprompt",e=>{
-  e.preventDefault();
-  deferredPrompt=e;
+  e.preventDefault();deferredPrompt=e;
   $("installBtn").style.display="block";
 });
-$("installBtn").onclick=async()=>{
-  if(!deferredPrompt)return;
-  deferredPrompt.prompt();
-  await deferredPrompt.userChoice;
-  deferredPrompt=null;
-  $("installBtn").style.display="none";
-};
+$("installBtn").onclick=()=>{deferredPrompt.prompt();$("installBtn").style.display="none";};
 
-/* ---------- WEATHER ---------- */
-async function loadWeather(lat,lon,name){
-  try{
-    showLoading(true);
+/* UPDATE */
+navigator.serviceWorker?.addEventListener("controllerchange",()=>{
+  $("updateBanner").style.display="block";
+  $("updateBanner").onclick=()=>location.reload();
+});
 
-    const w=await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,apparent_temperature,relativehumidity_2m&daily=temperature_2m_min,temperature_2m_max,weathercode&timezone=auto`
-    ).then(r=>r.json());
-
-    const a=await fetch(
-      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=pm2_5&timezone=auto`
-    ).then(r=>r.json());
-
-    $("location").textContent=name;
-    $("temp").textContent=w.current_weather.temperature+"°C";
-    $("feels").textContent="Feels like "+w.hourly.apparent_temperature[0]+"°C";
-    $("wind").textContent="Wind "+w.current_weather.windspeed+" km/h";
-    $("humidity").textContent="Humidity "+w.hourly.relativehumidity_2m[0]+"%";
-    $("windDir").textContent=compass(w.current_weather.winddirection);
-    $("icon").textContent=icons[w.current_weather.weathercode]||"⛅";
-    $("updated").textContent="Updated "+new Date().toLocaleTimeString();
-
-    const pm=a.hourly.pm2_5[0];
-    $("aqiValue").textContent=pm;
-    $("aqiLabel").textContent=pm<=30?"Good":pm<=60?"Moderate":pm<=90?"Poor":"Severe";
-
-    buildHourly(w.hourly.temperature_2m.slice(0,24));
-    buildForecast(w.daily);
-
-    localStorage.setItem("rivanoy_last",JSON.stringify({lat,lon,name}));
-  }catch{
-    alert("Offline or network issue");
-  }finally{
-    showLoading(false);
-  }
-}
-
-/* ---------- HOURLY ---------- */
-function buildHourly(t){
-  $("hourly").innerHTML="";
-  const min=Math.min(...t),max=Math.max(...t),r=max-min||1;
-  t.forEach(v=>{
-    $("hourly").innerHTML+=`
-      <div class="hour">
-        <div class="hour-bar"
-             style="height:${30+((v-min)/r)*80}px;background:#4fc3f7"></div>
-        <small>${v}°</small>
-      </div>`;
-  });
-}
-
-/* ---------- 7-DAY FORECAST (MAX / MIN) ---------- */
-function buildForecast(d){
-  $("forecast").innerHTML="";
-  d.time.forEach((x,i)=>{
-    $("forecast").innerHTML+=`
-      <div class="day">
-        <div class="day-bar-container">
-          <div class="day-bar-max"
-               style="height:60px;background:#ff7043"
-               title="Max ${d.temperature_2m_max[i]}°C"></div>
-          <div class="day-bar-min"
-               style="height:40px;background:#42a5f5"
-               title="Min ${d.temperature_2m_min[i]}°C"></div>
-        </div>
-
-        <div>${icons[d.weathercode[i]]||"⛅"}</div>
-
-        <small>
-          <strong>${d.temperature_2m_max[i]}°</strong> /
-          ${d.temperature_2m_min[i]}°
-        </small>
-
-        <small>${x.slice(5)}</small>
-      </div>`;
-  });
-}
-
-/* ---------- SEARCH ---------- */
-$("searchBtn").onclick=async()=>{
-  const q=$("cityInput").value.trim();
-  if(!q)return;
-  showLoading(true);
-  const r=await fetch(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${q}&count=1`
-  ).then(r=>r.json());
-  if(r.results?.[0]){
-    loadWeather(
-      r.results[0].latitude,
-      r.results[0].longitude,
-      r.results[0].name+", "+r.results[0].country
-    );
-  }
-  showLoading(false);
-};
-
-/* ---------- LOCATION ---------- */
-$("locBtn").onclick=()=>{
-  if(!navigator.geolocation)return alert("Location not supported");
-  showLoading(true);
-  navigator.geolocation.getCurrentPosition(
-    p=>loadWeather(p.coords.latitude,p.coords.longitude,"Current Location"),
-    ()=>{showLoading(false);alert("Enable location permission");}
-  );
-};
-
-/* ---------- BOOT ---------- */
-(function(){
-  const c=JSON.parse(localStorage.getItem("rivanoy_last")||"null");
-  c?loadWeather(c.lat,c.lon,c.name)
-   :loadWeather(28.61,77.23,"Delhi, India");
-})();
-
-/* ---------- SERVICE WORKER ---------- */
-if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("sw.js");
-}
+/* BOOT */
+const c=JSON.parse(localStorage.getItem("rivanoy_cache")||"null");
+c?loadWeather(c.lat,c.lon,c.name):loadWeather(28.61,77.23,"Delhi, India");
 </script>
 </body>
 </html>
-
