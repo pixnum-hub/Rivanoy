@@ -15,33 +15,29 @@ if ("serviceWorker" in navigator) {
 
 <style>
 *{box-sizing:border-box;font-family:system-ui,sans-serif;margin:0;padding:0;}
-body{min-height:100vh;display:flex;justify-content:center;padding:12px;
-background:linear-gradient(135deg,#667eea,#764ba2)}
-.app{width:100%;max-width:390px;min-height:100vh;padding:16px;
-border-radius:22px;background:rgba(255,255,255,.18);backdrop-filter:blur(16px);color:#000;position:relative;}
+body{min-height:100vh;display:flex;justify-content:center;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);}
+.app{width:100%;max-width:390px;min-height:100vh;padding:16px;border-radius:22px;background:rgba(255,255,255,.18);backdrop-filter:blur(16px);color:#000;position:relative;}
 input,button{width:100%;padding:12px;border-radius:12px;border:none;margin-bottom:10px;font-size:14px;}
-button{font-weight:bold;background:rgba(255,255,255,.35)}
-.icon{font-size:48px;text-align:center}
-.big{font-size:22px;font-weight:bold}
+button{font-weight:bold;background:rgba(255,255,255,.35);}
+.icon{font-size:48px;text-align:center;}
+.big{font-size:22px;font-weight:bold;}
 
+h1,h2,h3,.details,.summary,.lifestyle,#aqiCard,#forecast{margin-bottom:16px;}
+.card,.day-card{margin-bottom:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.25);}
 .banner{display:none;padding:8px;border-radius:10px;font-size:13px;text-align:center;margin-bottom:10px}
 .banner.alert{background:#e53935;color:#fff}
-.banner.info{background:#ff7043;color:#fff}
-
+.banner.info{background:#ff7043;color:#000}
 .details,.lifestyle{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
-.card{background:rgba(255,255,255,.25);border-radius:16px;padding:12px;text-align:center;font-size:14px}
-.summary{margin-top:10px;padding:12px;border-radius:16px;background:rgba(255,255,255,.25);font-size:14px}
-
-.day-card{background:rgba(255,255,255,.22);border-radius:16px;padding:12px;margin-top:10px;cursor:pointer}
+.day-card{cursor:pointer}
 .day-header{display:flex;justify-content:space-between;font-weight:bold}
 .bars{display:flex;gap:6px;align-items:flex-end;height:80px;margin-top:6px}
 .bar{width:14px;border-radius:6px 6px 0 0}
+.bar.max{background:#ff7043;}
+.bar.min{background:#42a5f5;}
 .expand{max-height:0;overflow:hidden;transition:max-height .35s ease}
 .day-card.open .expand{max-height:240px}
 .hour-row{display:flex;justify-content:space-between;font-size:12px;border-bottom:1px solid rgba(255,255,255,.2);padding:4px 0}
-
-.loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,.4);
-backdrop-filter:blur(6px);border-radius:22px;font-size:18px;font-weight:bold;text-align:center;z-index:10}
+.loading{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(255,255,255,.4);backdrop-filter:blur(6px);border-radius:22px;font-size:18px;font-weight:bold;text-align:center;z-index:10}
 
 /* AQI UI */
 #aqiCard{overflow:visible;min-height:80px;font-size:14px;word-break:break-word;margin-top:10px}
@@ -53,8 +49,8 @@ backdrop-filter:blur(6px);border-radius:22px;font-size:18px;font-weight:bold;tex
 .aqi-bar{width:100%;max-width:100%;height:6px;background:rgba(255,255,255,.3);border-radius:6px;overflow:hidden;margin:6px 0}
 .aqi-bar span{display:block;height:100%;width:0%;background:#2ecc71;transition:width .3s, background .3s}
 .mask-tip{margin-top:6px;font-size:13px;opacity:.9}
-
-#aqiChart{width:100%;height:120px;display:block;margin-top:6px;border-radius:12px;}
+canvas{border-radius:12px;}
+#hourlyChart{width:100%;height:120px;margin-bottom:16px;}
 
 @media(prefers-color-scheme:dark){
   body{background:linear-gradient(135deg,#0f2027,#203a43,#2c5364)}
@@ -109,6 +105,9 @@ backdrop-filter:blur(6px);border-radius:22px;font-size:18px;font-weight:bold;tex
   <canvas id="aqiChart"></canvas>
 </div>
 
+<h3>🕒 Next 24 Hours Temperature</h3>
+<canvas id="hourlyChart"></canvas>
+
 <h3>🏃 Lifestyle Index</h3>
 <div class="lifestyle">
   <div class="card" id="run">Running --</div>
@@ -131,84 +130,18 @@ const $ = id => document.getElementById(id);
 const icons={0:"☀",1:"🌤",2:"⛅",3:"☁",45:"🌫",61:"🌧",71:"❄",95:"⛈"};
 function color(t){return t>35?"#e53935":t>25?"#fb8c00":t>15?"#fdd835":"#42a5f5";}
 function summaryText(t,uv){return t>32?"Hot day ahead":t<15?"Cool conditions":"Pleasant weather"+(uv>7?", high UV":"");}
-function aqiInfo(pm){
-  if(pm<=30) return {label:"Good",cls:"good",advice:"Air quality is good. Ideal for outdoor activities.",pct:25};
-  if(pm<=60) return {label:"Moderate",cls:"moderate",advice:"Sensitive people should limit outdoor exposure.",pct:50};
-  if(pm<=90) return {label:"Poor",cls:"poor",advice:"Avoid prolonged outdoor exertion.",pct:75};
-  return {label:"Severe",cls:"severe",advice:"Stay indoors. Wear a mask if going outside.",pct:100};
-}
-function drawAQIChart(values){
-  const c=$("aqiChart"), ctx=c.getContext("2d"); c.width=c.offsetWidth; c.height=120;
-  ctx.clearRect(0,0,c.width,c.height);
-  const max = Math.max(...values,100);
-  values.forEach((v,i)=>{
-    const h=(v/max)*c.height;
-    ctx.fillStyle=v<=30?"#2ecc71":v<=60?"#f1c40f":v<=90?"#e67e22":"#e53935";
-    ctx.fillRect(i*(c.width/24),c.height-h,6,h);
-  });
-}
-window.addEventListener("resize",()=>{drawAQIChart(JSON.parse(localStorage.getItem("rivanoy_cache")?.air?.hourly?.pm2_5.slice(0,24)||"[0]"));});
+function aqiInfo(pm){if(pm<=30) return {label:"Good",cls:"good",advice:"Air quality is good. Ideal for outdoor activities.",pct:25};if(pm<=60) return {label:"Moderate",cls:"moderate",advice:"Sensitive people should limit outdoor exposure.",pct:50};if(pm<=90) return {label:"Poor",cls:"poor",advice:"Avoid prolonged outdoor exertion.",pct:75};return {label:"Severe",cls:"severe",advice:"Stay indoors. Wear a mask if going outside.",pct:100};}
+
+// ================= DRAW CHARTS =================
+function drawAQIChart(values){const c=$("aqiChart"), ctx=c.getContext("2d"); c.width=c.offsetWidth; c.height=120;ctx.clearRect(0,0,c.width,c.height);const max = Math.max(...values,100);values.forEach((v,i)=>{const h=(v/max)*c.height;ctx.fillStyle=v<=30?"#2ecc71":v<=60?"#f1c40f":v<=90?"#e67e22":"#e53935";ctx.fillRect(i*(c.width/24),c.height-h,6,h);});}
+function drawHourlyTemp(t){const c=$("hourlyChart"), ctx=c.getContext("2d"); c.width=c.offsetWidth; c.height=120;ctx.clearRect(0,0,c.width,c.height);const min=Math.min(...t); const max=Math.max(...t);t.forEach((v,i)=>{const h=((v-min)/(max-min))*c.height;ctx.fillStyle="#42a5f5";ctx.fillRect(i*(c.width/24), c.height-h, c.width/24-2, h);});}
+window.addEventListener("resize",()=>{const cache=JSON.parse(localStorage.getItem("rivanoy_cache")||"{}");if(cache?.air) drawAQIChart(cache.air.hourly.pm2_5.slice(0,24));if(cache?.weather) drawHourlyTemp(cache.weather.hourly.temperature_2m.slice(0,24));});
 
 // ================= WEATHER + AQI =================
-async function loadWeather(lat,lon,name){
-  $("loading").style.display="flex"; $("offlineBanner").style.display="none";
-  try{
-    const w=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,relativehumidity_2m,windspeed_10m,uv_index&daily=temperature_2m_min,temperature_2m_max,weathercode,sunrise,sunset&timezone=auto`).then(r=>r.json());
-    const a=await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=pm2_5&timezone=auto`).then(r=>r.json());
-    
-    $("location").textContent=name;
-    $("temp").textContent=w.current_weather.temperature+"°C";
-    $("feels").textContent="Feels like "+w.current_weather.temperature+"°C";
-    $("wind").textContent="Wind "+w.current_weather.windspeed+" km/h";
-    $("humidity").textContent="Humidity "+w.hourly.relativehumidity_2m[0]+"%";
-    $("icon").textContent=icons[w.current_weather.weathercode]||"⛅";
-    $("uv").textContent=w.hourly.uv_index[0];
-    $("sun").textContent=w.daily.sunrise[0].slice(11,16)+" – "+w.daily.sunset[0].slice(11,16);
-    $("summary").textContent=summaryText(w.current_weather.temperature,w.hourly.uv_index[0]);
-
-    $("run").textContent="Running "+Math.floor(Math.random()*100);
-    $("cycle").textContent="Cycling "+Math.floor(Math.random()*100);
-    $("laundry").textContent="Laundry "+Math.floor(Math.random()*100);
-    $("outdoor").textContent="Outdoor "+Math.floor(Math.random()*100);
-
-    // AQI
-    const pm=a.hourly.pm2_5[0], info=aqiInfo(pm);
-    const badge=$("aqiBadge"), fill=$("aqiFill");
-    badge.className="aqi "+info.cls; badge.textContent=pm+" · "+info.label;
-    fill.style.width=info.pct+"%";
-    fill.style.background=badge.className.includes("good")?"#2ecc71":badge.className.includes("moderate")?"#f1c40f":badge.className.includes("poor")?"#e67e22":"#e53935";
-    $("aqiAdvice").textContent=info.advice;
-    $("maskTip").textContent=pm<=30?"😌 No mask needed":pm<=60?"😐 Optional for sensitive users":pm<=90?"😷 Mask recommended outdoors":"😷 N95 mask strongly advised";
-    const prev=a.hourly.pm2_5[1]; $("aqiTrend").textContent=pm>prev?" ↑ Worsening":pm<prev?" ↓ Improving":" → Stable";
-    drawAQIChart(a.hourly.pm2_5.slice(0,24));
-
-    buildForecast(w);
-    localStorage.setItem("rivanoy_cache",JSON.stringify({lat,lon,name,weather:w,air:a}));
-  }catch(e){
-    const c=JSON.parse(localStorage.getItem("rivanoy_cache")||"null");
-    if(c){$("offlineBanner").style.display="block";loadWeather(c.lat,c.lon,c.name);return;}
-    alert("Network error. Please check internet.");
-  }
-  $("loading").style.display="none";
-}
+async function loadWeather(lat,lon,name){$("loading").style.display="flex";$("offlineBanner").style.display="none";try{const w=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=temperature_2m,relativehumidity_2m,windspeed_10m,uv_index&daily=temperature_2m_min,temperature_2m_max,weathercode,sunrise,sunset&timezone=auto`).then(r=>r.json());const a=await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&hourly=pm2_5&timezone=auto`).then(r=>r.json());$("location").textContent=name;$("temp").textContent=w.current_weather.temperature+"°C";$("feels").textContent="Feels like "+w.current_weather.temperature+"°C";$("wind").textContent="Wind "+w.current_weather.windspeed+" km/h";$("humidity").textContent="Humidity "+w.hourly.relativehumidity_2m[0]+"%";$("icon").textContent=icons[w.current_weather.weathercode]||"⛅";$("uv").textContent=w.hourly.uv_index[0];$("sun").textContent=w.daily.sunrise[0].slice(11,16)+" – "+w.daily.sunset[0].slice(11,16);$("summary").textContent=summaryText(w.current_weather.temperature,w.hourly.uv_index[0]);$("run").textContent="Running "+Math.floor(Math.random()*100);$("cycle").textContent="Cycling "+Math.floor(Math.random()*100);$("laundry").textContent="Laundry "+Math.floor(Math.random()*100);$("outdoor").textContent="Outdoor "+Math.floor(Math.random()*100);const pm=a.hourly.pm2_5[0], info=aqiInfo(pm);const badge=$("aqiBadge"), fill=$("aqiFill");badge.className="aqi "+info.cls; badge.textContent=pm+" · "+info.label;fill.style.width=info.pct+"%";fill.style.background=badge.className.includes("good")?"#2ecc71":badge.className.includes("moderate")?"#f1c40f":badge.className.includes("poor")?"#e67e22":"#e53935";$("aqiAdvice").textContent=info.advice;$("maskTip").textContent=pm<=30?"😌 No mask needed":pm<=60?"😐 Optional for sensitive users":pm<=90?"😷 Mask recommended outdoors":"😷 N95 mask strongly advised";const prev=a.hourly.pm2_5[1];$("aqiTrend").textContent=pm>prev?" ↑ Worsening":pm<prev?" ↓ Improving":" → Stable";drawAQIChart(a.hourly.pm2_5.slice(0,24));drawHourlyTemp(w.hourly.temperature_2m.slice(0,24));buildForecast(w);localStorage.setItem("rivanoy_cache",JSON.stringify({lat,lon,name,weather:w,air:a}));}catch(e){const c=JSON.parse(localStorage.getItem("rivanoy_cache")||"null");if(c){$("offlineBanner").style.display="block";loadWeather(c.lat,c.lon,c.name);return;}alert("Network error. Please check internet.");}$("loading").style.display="none";}
 
 // ================= FORECAST =================
-function buildForecast(w){
-  const f=$("forecast");f.innerHTML="";
-  const min=Math.min(...w.daily.temperature_2m_min);
-  const max=Math.max(...w.daily.temperature_2m_max);
-  const r=max-min||1;
-  w.daily.time.forEach((d,i)=>{
-    const card=document.createElement("div"); card.className="day-card";
-    card.innerHTML=`<div class="day-header"><span>${d.slice(5)}</span><span>${w.daily.temperature_2m_max[i]}° / ${w.daily.temperature_2m_min[i]}°</span></div>
-    <div class="bars">
-    <div class="bar" style="height:${((w.daily.temperature_2m_max[i]-min)/r)*80+10}px;background:${color(w.daily.temperature_2m_max[i])}"></div>
-    <div class="bar" style="height:${((w.daily.temperature_2m_min[i]-min)/r)*80+10}px;background:${color(w.daily.temperature_2m_min[i])}"></div>
-    </div><div class="expand"></div>`;
-    card.onclick=()=>{card.classList.toggle("open"); const ex=card.querySelector(".expand"); if(ex.innerHTML) return; for(let h=0;h<24;h++){ex.innerHTML+=`<div class="hour-row"><span>${h}:00</span><span>${w.hourly.temperature_2m[i*24+h]}°</span><span>${w.hourly.relativehumidity_2m[i*24+h]}%</span><span>${w.hourly.windspeed_10m[i*24+h]} km/h</span></div>`;}};
-    f.appendChild(card);
-  });
-}
+function buildForecast(w){const f=$("forecast");f.innerHTML="";const min=Math.min(...w.daily.temperature_2m_min);const max=Math.max(...w.daily.temperature_2m_max);const r=max-min||1;w.daily.time.forEach((d,i)=>{const card=document.createElement("div"); card.className="day-card";card.innerHTML=`<div class="day-header"><span>${d.slice(5)}</span><span>${w.daily.temperature_2m_max[i]}° / ${w.daily.temperature_2m_min[i]}°</span></div><div class="bars"><div class="bar max" style="height:${((w.daily.temperature_2m_max[i]-min)/r)*80+10}px"></div><div class="bar min" style="height:${((w.daily.temperature_2m_min[i]-min)/r)*80+10}px"></div></div><div class="expand"></div>`;card.onclick=()=>{card.classList.toggle("open");const ex=card.querySelector(".expand");if(ex.innerHTML) return;for(let h=0;h<24;h++){ex.innerHTML+=`<div class="hour-row"><span>${h}:00</span><span>${w.hourly.temperature_2m[i*24+h]}°</span><span>${w.hourly.relativehumidity_2m[i*24+h]}%</span><span>${w.hourly.windspeed_10m[i*24+h]} km/h</span></div>`;}};f.appendChild(card);});}
 
 // ================= INSTALL & UPDATE =================
 let deferredPrompt;
